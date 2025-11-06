@@ -2,7 +2,7 @@
 <html lang="es">
 <head>
 <meta charset="UTF-8">
-<title>Notas de Real Estate (La Nación) — Todas las páginas</title>
+<title>Notas de Real Estate (La Nación)</title>
 <style>
   body { font-family: Arial, sans-serif; text-align: center; margin: 40px; }
   h1 { color: #111; }
@@ -15,14 +15,14 @@
 </head>
 <body>
 
-<h1>Notas de Real Estate (La Nación) — Todas las páginas</h1>
+<h1>Notas de Real Estate (La Nación)</h1>
 
 <label>Desde: <input type="date" id="desde"></label>
 <label>Hasta: <input type="date" id="hasta"></label>
 <button id="buscar">Contar notas</button>
 
 <h3 id="resultado"></h3>
-<p><strong>Listado (hasta 200 resultados mostrados):</strong></p>
+<p><strong>Listado (hasta 200 resultados):</strong></p>
 <ul id="lista"></ul>
 
 <script>
@@ -32,25 +32,26 @@ async function obtenerNotas(desde, hasta) {
   let notas = [];
 
   while (true) {
-    // Nuevo feed JSON (funciona desde navegador sin CORS)
-    const url = `https://www.lanacion.com.ar/arc/outboundfeeds/tema/real-estate-tid65306/?outputType=json&page=${page}`;
+    const feed = `https://www.lanacion.com.ar/arc/outboundfeeds/tema/real-estate-tid65306/?outputType=json&page=${page}`;
+    const url = `https://api.allorigins.win/get?url=${encodeURIComponent(feed)}`;
+
     const response = await fetch(url);
     if (!response.ok) break;
 
-    const data = await response.json();
+    const wrapped = await response.json();
+    const data = JSON.parse(wrapped.contents);
     if (!data || !data.content_elements || data.content_elements.length === 0) break;
 
     for (const item of data.content_elements) {
       const fecha = new Date(item.display_date);
       const fechaISO = fecha.toISOString().split("T")[0];
-      if (
-        (!desde || fechaISO >= desde) &&
-        (!hasta || fechaISO <= hasta)
-      ) {
+      if ((!desde || fechaISO >= desde) && (!hasta || fechaISO <= hasta)) {
         totalNotas++;
         notas.push({
           titulo: item.headlines.basic,
-          url: item.canonical_url ? "https://www.lanacion.com.ar" + item.canonical_url : "#",
+          url: item.canonical_url
+            ? "https://www.lanacion.com.ar" + item.canonical_url
+            : "#",
           fecha: fechaISO
         });
       }
@@ -58,7 +59,7 @@ async function obtenerNotas(desde, hasta) {
 
     if (!data.next_page) break;
     page++;
-    if (page > 10) break; // límite de seguridad (puedes ampliar si quieres)
+    if (page > 10) break; // puedes subir a 20 si querés más
   }
 
   return { totalNotas, notas };
