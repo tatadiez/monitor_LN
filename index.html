@@ -1,93 +1,54 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-<meta charset="UTF-8">
-<title>Notas de Real Estate (La Nación)</title>
-<style>
-  body { font-family: Arial, sans-serif; text-align: center; margin: 40px; }
-  h1 { color: #111; }
-  input, button { margin: 5px; padding: 6px; font-size: 14px; }
-  ul { text-align: left; display: inline-block; max-width: 600px; }
-  li { margin-bottom: 6px; }
-  a { color: #0072bb; text-decoration: none; }
-  a:hover { text-decoration: underline; }
-</style>
+  <meta charset="UTF-8" />
+  <title>Notas de Real Estate (La Nación) — Todas las páginas</title>
+  <style>
+    body { font-family: Arial; text-align: center; margin: 40px; }
+    h1 { color: #000; }
+    #resultado { font-size: 1.2em; color: blue; }
+    ul { list-style: none; padding: 0; }
+  </style>
 </head>
 <body>
+  <h1>Notas de Real Estate (La Nación) — Todas las páginas</h1>
+  <label>Desde: <input type="date" id="desde"></label>
+  <label>Hasta: <input type="date" id="hasta"></label>
+  <button id="contar">Contar notas</button>
+  <p id="resultado">Total de notas encontradas: 0</p>
+  <ul id="listado"></ul>
 
-<h1>Notas de Real Estate (La Nación)</h1>
+  <script>
+    document.getElementById('contar').addEventListener('click', async () => {
+      const desde = new Date(document.getElementById('desde').value);
+      const hasta = new Date(document.getElementById('hasta').value);
+      const proxy = "https://api.allorigins.win/raw?url=";
+      let total = 0;
+      let listado = [];
 
-<label>Desde: <input type="date" id="desde"></label>
-<label>Hasta: <input type="date" id="hasta"></label>
-<button id="buscar">Contar notas</button>
+      for (let page = 1; page <= 10; page++) { // 10 páginas = ~200 notas
+        const url = `https://www.lanacion.com.ar/arc/outboundfeeds/tema/real-estate-tid65306/?outputType=json&page=${page}`;
+        const full = proxy + encodeURIComponent(url);
+        try {
+          const resp = await fetch(full);
+          const data = await resp.json();
+          if (!data.content_elements || data.content_elements.length === 0) break;
 
-<h3 id="resultado"></h3>
-<p><strong>Listado (hasta 200 resultados):</strong></p>
-<ul id="lista"></ul>
-
-<script>
-async function obtenerNotas(desde, hasta) {
-  let page = 1;
-  let totalNotas = 0;
-  let notas = [];
-
-  while (true) {
-    const feed = `https://www.lanacion.com.ar/arc/outboundfeeds/tema/real-estate-tid65306/?outputType=json&page=${page}`;
-    const url = `https://api.allorigins.win/get?url=${encodeURIComponent(feed)}`;
-
-    const response = await fetch(url);
-    if (!response.ok) break;
-
-    const wrapped = await response.json();
-    const data = JSON.parse(wrapped.contents);
-    if (!data || !data.content_elements || data.content_elements.length === 0) break;
-
-    for (const item of data.content_elements) {
-      const fecha = new Date(item.display_date);
-      const fechaISO = fecha.toISOString().split("T")[0];
-      if ((!desde || fechaISO >= desde) && (!hasta || fechaISO <= hasta)) {
-        totalNotas++;
-        notas.push({
-          titulo: item.headlines.basic,
-          url: item.canonical_url
-            ? "https://www.lanacion.com.ar" + item.canonical_url
-            : "#",
-          fecha: fechaISO
-        });
+          data.content_elements.forEach(nota => {
+            const fecha = new Date(nota.display_date);
+            if (fecha >= desde && fecha <= hasta) {
+              total++;
+              listado.push(`<li>${nota.headlines.basic}</li>`);
+            }
+          });
+        } catch (e) {
+          console.error("Error al obtener página", page, e);
+          break;
+        }
       }
-    }
-
-    if (!data.next_page) break;
-    page++;
-    if (page > 10) break; // puedes subir a 20 si querés más
-  }
-
-  return { totalNotas, notas };
-}
-
-document.getElementById("buscar").addEventListener("click", async () => {
-  const desde = document.getElementById("desde").value;
-  const hasta = document.getElementById("hasta").value;
-
-  document.getElementById("resultado").innerText = "Buscando...";
-  document.getElementById("lista").innerHTML = "";
-
-  try {
-    const { totalNotas, notas } = await obtenerNotas(desde, hasta);
-    document.getElementById("resultado").innerHTML =
-      `<span style="color:#0072bb;">Total de notas encontradas: ${totalNotas}</span>`;
-
-    notas.slice(0, 200).forEach(n => {
-      const li = document.createElement("li");
-      li.innerHTML = `<a href="${n.url}" target="_blank">${n.titulo}</a> (${n.fecha})`;
-      document.getElementById("lista").appendChild(li);
+      document.getElementById('resultado').innerText = `Total de notas encontradas: ${total}`;
+      document.getElementById('listado').innerHTML = listado.join('');
     });
-  } catch (error) {
-    console.error(error);
-    document.getElementById("resultado").innerText = "Error al obtener datos.";
-  }
-});
-</script>
-
+  </script>
 </body>
 </html>
