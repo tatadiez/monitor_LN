@@ -1,239 +1,92 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-<meta charset="utf-8" />
-<title>Contador Real Estate - La Nación (todas las páginas)</title>
+<meta charset="UTF-8">
+<title>Notas de Real Estate (La Nación) — Todas las páginas</title>
 <style>
-  body { font-family: Arial, sans-serif; margin: 40px; text-align: center; }
-  input, button { margin: 6px; padding: 6px; }
-  #resultado { margin-top: 18px; font-size: 1.2em; color: #0072bb; }
-  ul { text-align: left; display: inline-block; max-width: 760px; padding: 0 20px; }
-  li { margin: 6px 0; }
+  body { font-family: Arial, sans-serif; text-align: center; margin: 40px; }
+  h1 { color: #111; }
+  input, button { margin: 5px; padding: 6px; font-size: 14px; }
+  ul { text-align: left; display: inline-block; max-width: 600px; }
+  li { margin-bottom: 6px; }
+  a { color: #0072bb; text-decoration: none; }
+  a:hover { text-decoration: underline; }
 </style>
 </head>
 <body>
-  <h1>Notas de Real Estate (La Nación) — Todas las páginas</h1>
 
-  <label>Desde: <input type="date" id="desde"></label>
-  <label>Hasta: <input type="date" id="hasta"></label>
-  <button id="buscar">Contar notas</button>
+<h1>Notas de Real Estate (La Nación) — Todas las páginas</h1>
 
-  <div id="resultado">Ingrese fechas y presione "Contar notas".</div>
-  <h3>Listado (hasta 200 resultados mostrados):</h3>
-  <ul id="lista"></ul>
+<label>Desde: <input type="date" id="desde"></label>
+<label>Hasta: <input type="date" id="hasta"></label>
+<button id="buscar">Contar notas</button>
+
+<h3 id="resultado"></h3>
+<p><strong>Listado (hasta 200 resultados mostrados):</strong></p>
+<ul id="lista"></ul>
 
 <script>
-/*
-  Estrategia:
-  1) Intentar la API: https://content-api.lanacion.com.ar/api/v1/tema/real-estate-tid65306?size=20&page=X
-  2) Si la API no responde o no permite CORS, hacer fallback: scrapear páginas HTML
-     usando un proxy público (allorigins.hexlet.app). Recorre /p1/, /p2/, ... hasta que ya no haya artículos.
-  3) Filtrar por rango de fechas (si se pasan).
-  Notas: Limites de seguridad: maxPages (para evitar loops infinitos).
-*/
-
-const MAX_PAGES = 120;         // tope de páginas a recorrer
-const MAX_SHOW = 200;          // cuántos resultados mostrar en la lista
-const PROXY = "https://api.allorigins.hexlet.app/get?url=";
-const BASE_TAG_URL = "https://www.lanacion.com.ar/tema/real-estate-tid65306/";
-
-// Helper parseFecha: intenta parsear fechas en varios formatos
-function parseFecha(textOrIso) {
-  if (!textOrIso) return null;
-  // Si viene ISO ya convertible:
-  const iso = new Date(textOrIso);
-  if (!isNaN(iso)) return iso;
-
-  // Buscar dd/mm/yyyy en texto
-  const m = textOrIso.match(/(\d{1,2})\D+(\d{1,2})\D+(\d{4})/);
-  if (m) {
-    const d = parseInt(m[1],10), mo = parseInt(m[2],10) - 1, y = parseInt(m[3],10);
-    return new Date(y, mo, d);
-  }
-
-  // fallback: intentar Date constructor (poco fiable)
-  const fallback = new Date(textOrIso);
-  return isNaN(fallback) ? null : fallback;
-}
-
-// Intentar obtener por API oficial (si permite CORS)
-async function obtenerPorAPI(desdeISO, hastaISO) {
-  console.log("Intentando API de contenido...");
+async function obtenerNotas(desde, hasta) {
   let page = 1;
-  let todas = [];
-  while (page <= MAX_PAGES) {
-    const url = `https://content-api.lanacion.com.ar/api/v1/tema/real-estate-tid65306?size=20&page=${page}`;
-    console.log("API fetch:", url);
-    let resp;
-    try {
-      resp = await fetch(url);
-    } catch (err) {
-      console.warn("Error fetch API (posible bloqueo CORS):", err);
-      throw new Error("API no disponible o CORS bloquea");
-    }
-    if (!resp.ok) {
-      console.warn("API respondió con status:", resp.status);
-      throw new Error("API respondió error");
-    }
-    let data;
-    try {
-      data = await resp.json();
-    } catch (err) {
-      console.warn("Error parseando JSON de API:", err);
-      throw new Error("API devuelve JSON inválido");
-    }
+  let totalNotas = 0;
+  let notas = [];
 
-    const items = data.items || data.results || data.data || [];
-    if (!items || items.length === 0) break;
+  while (true) {
+    // Nuevo feed JSON (funciona desde navegador sin CORS)
+    const url = `https://www.lanacion.com.ar/arc/outboundfeeds/tema/real-estate-tid65306/?outputType=json&page=${page}`;
+    const response = await fetch(url);
+    if (!response.ok) break;
 
-    for (const it of items) {
-      const pub = it.publish_date || it.publishDate || it.date || it.created_at;
-      const fecha = parseFecha(pub);
-      const titulo = it.title || it.headline || it.nombre || it.name || "Sin título";
-      // canonical_url puede venir ya completa o relativa
-      let urlNota = it.canonical_url || it.url || it.canonicalUrl || "";
-      if (urlNota && !urlNota.startsWith("http")) {
-        // algunos endpoints devuelven "/nota/slug..."
-        urlNota = "https://www.lanacion.com.ar" + urlNota;
-      } else if (!urlNota) {
-        urlNota = "https://www.lanacion.com.ar/";
-      }
-      if ((!desdeISO || fecha >= new Date(desdeISO)) && (!hastaISO || fecha <= new Date(hastaISO))) {
-        todas.push({ titulo: titulo, url: urlNota, fecha });
+    const data = await response.json();
+    if (!data || !data.content_elements || data.content_elements.length === 0) break;
+
+    for (const item of data.content_elements) {
+      const fecha = new Date(item.display_date);
+      const fechaISO = fecha.toISOString().split("T")[0];
+      if (
+        (!desde || fechaISO >= desde) &&
+        (!hasta || fechaISO <= hasta)
+      ) {
+        totalNotas++;
+        notas.push({
+          titulo: item.headlines.basic,
+          url: item.canonical_url ? "https://www.lanacion.com.ar" + item.canonical_url : "#",
+          fecha: fechaISO
+        });
       }
     }
 
-    // Paginación: si no existe más items, terminamos
-    if (!data.paging || !data.paging.nextPage) {
-      break;
-    }
+    if (!data.next_page) break;
     page++;
+    if (page > 10) break; // límite de seguridad (puedes ampliar si quieres)
   }
 
-  return todas;
-}
-
-// Fallback: scrapear todas las páginas HTML vía proxy
-async function obtenerPorScraping(desdeISO, hastaISO) {
-  console.log("FALLBACK: scraping vía proxy");
-  let page = 1;
-  let todas = [];
-  while (page <= MAX_PAGES) {
-    const pageUrl = page === 1 ? BASE_TAG_URL : `${BASE_TAG_URL}p${page}/`;
-    const fetchUrl = PROXY + encodeURIComponent(pageUrl);
-    console.log("Scrape fetch:", fetchUrl);
-    let resp;
-    try {
-      resp = await fetch(fetchUrl);
-    } catch (err) {
-      console.warn("Error fetch proxy:", err);
-      break;
-    }
-    if (!resp.ok) {
-      console.warn("Proxy respondió status:", resp.status);
-      break;
-    }
-    let data;
-    try {
-      data = await resp.json();
-    } catch (err) {
-      console.warn("Error parse proxy JSON:", err);
-      break;
-    }
-    const html = data && data.contents ? data.contents : null;
-    if (!html) break;
-
-    const parser = new DOMParser();
-    const doc = parser.parseFromString(html, "text/html");
-    const articulos = doc.querySelectorAll("article");
-    if (!articulos || articulos.length === 0) {
-      console.log("No hay más artículos en página", page);
-      break;
-    }
-
-    for (const a of articulos) {
-      // obtener título
-      const tituloElem = a.querySelector("h2, h3, a.titulo, a");
-      const titulo = tituloElem ? tituloElem.textContent.trim() : "Sin título";
-      // obtener link
-      let link = null;
-      const aLink = a.querySelector("a[href]");
-      if (aLink) {
-        link = aLink.getAttribute("href");
-        if (link && !link.startsWith("http")) link = "https://www.lanacion.com.ar" + link;
-      } else {
-        link = "https://www.lanacion.com.ar/";
-      }
-      // obtener fecha
-      let fechaText = null;
-      const timeEl = a.querySelector("time");
-      if (timeEl) {
-        fechaText = timeEl.getAttribute("datetime") || timeEl.textContent.trim();
-      } else {
-        // buscar patrones de fecha dentro del artículo
-        const dateCandidate = a.textContent.match(/\d{1,2}\s*de\s*[a-zA-Z]+|\d{1,2}\/\d{1,2}\/\d{4}|\d{4}-\d{2}-\d{2}/);
-        fechaText = dateCandidate ? dateCandidate[0] : null;
-      }
-      const fecha = parseFecha(fechaText) || new Date(); // si no se puede parsear, ponemos hoy (no ideal)
-      if ((!desdeISO || fecha >= new Date(desdeISO)) && (!hastaISO || fecha <= new Date(hastaISO))) {
-        todas.push({ titulo, url: link, fecha });
-      }
-    }
-
-    page++;
-  }
-
-  return todas;
-}
-
-async function obtenerNotas(desdeISO, hastaISO) {
-  // Primero intentar API oficial
-  try {
-    const byApi = await obtenerPorAPI(desdeISO, hastaISO);
-    console.log("API funcionó. Total encontrados:", byApi.length);
-    return byApi;
-  } catch (err) {
-    console.warn("API falló o CORS bloquea. Mensaje:", err.message);
-    // intentar fallback
-    const byScrape = await obtenerPorScraping(desdeISO, hastaISO);
-    console.log("Scraping completado. Total encontrados:", byScrape.length);
-    return byScrape;
-  }
+  return { totalNotas, notas };
 }
 
 document.getElementById("buscar").addEventListener("click", async () => {
-  const desde = document.getElementById("desde").value; // formato yyyy-mm-dd
+  const desde = document.getElementById("desde").value;
   const hasta = document.getElementById("hasta").value;
-  // convertimos a ISO simple para comparar
-  const desdeISO = desde ? new Date(desde).toISOString() : null;
-  const hastaISO = hasta ? new Date(hasta).toISOString() : null;
 
-  document.getElementById("resultado").textContent = "Buscando... (esto puede tardar algunos segundos)";
+  document.getElementById("resultado").innerText = "Buscando...";
   document.getElementById("lista").innerHTML = "";
 
   try {
-    const notas = await obtenerNotas(desdeISO, hastaISO);
-    // ordenar por fecha descendente
-    notas.sort((a,b) => b.fecha - a.fecha);
-    document.getElementById("resultado").textContent = `Total de notas encontradas: ${notas.length}`;
-    const lista = document.getElementById("lista");
-    for (let i = 0; i < Math.min(notas.length, MAX_SHOW); i++) {
-      const n = notas[i];
+    const { totalNotas, notas } = await obtenerNotas(desde, hasta);
+    document.getElementById("resultado").innerHTML =
+      `<span style="color:#0072bb;">Total de notas encontradas: ${totalNotas}</span>`;
+
+    notas.slice(0, 200).forEach(n => {
       const li = document.createElement("li");
-      const fechaStr = n.fecha instanceof Date && !isNaN(n.fecha) ? n.fecha.toLocaleDateString("es-AR") : "";
-      li.innerHTML = `<a href="${n.url}" target="_blank" rel="noopener noreferrer">${n.titulo}</a> — <small>${fechaStr}</small>`;
-      lista.appendChild(li);
-    }
-    if (notas.length > MAX_SHOW) {
-      const more = document.createElement("li");
-      more.innerHTML = `<em>Se muestran ${MAX_SHOW} primeros resultados de ${notas.length}.</em>`;
-      lista.appendChild(more);
-    }
-  } catch (err) {
-    console.error("Error general:", err);
-    document.getElementById("resultado").textContent = "Error al obtener datos. Ver consola para detalles.";
+      li.innerHTML = `<a href="${n.url}" target="_blank">${n.titulo}</a> (${n.fecha})`;
+      document.getElementById("lista").appendChild(li);
+    });
+  } catch (error) {
+    console.error(error);
+    document.getElementById("resultado").innerText = "Error al obtener datos.";
   }
 });
 </script>
+
 </body>
 </html>
